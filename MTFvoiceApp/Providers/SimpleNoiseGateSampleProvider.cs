@@ -1,12 +1,12 @@
 ﻿using NAudio.Wave;
 
-namespace MTFvoiceApp
+namespace MTFvoiceApp.Providers
 {
     internal sealed class SimpleNoiseGateSampleProvider : ISampleProvider
     {
         private readonly ISampleProvider _source;
-        private readonly float _thresholdLin;
-        private readonly float _attenuationLin;
+        private readonly float _thresholdLinear;
+        private readonly float _attenuationLinear;
         private readonly float _attackCoef;
         private readonly float _releaseCoef;
 
@@ -23,8 +23,8 @@ namespace MTFvoiceApp
                 throw new ArgumentException("SimpleNoiseGateSampleProvider expects mono input.");
 
             _source = source;
-            _thresholdLin = AudioMath.DbToLinear(thresholdDb);
-            _attenuationLin = AudioMath.DbToLinear(attenuationDb);
+            _thresholdLinear = AudioMath.DbToLinear(thresholdDb);
+            _attenuationLinear = AudioMath.DbToLinear(attenuationDb);
 
             _attackCoef = TimeToCoef(attackMs, source.WaveFormat.SampleRate);
             _releaseCoef = TimeToCoef(releaseMs, source.WaveFormat.SampleRate);
@@ -37,26 +37,23 @@ namespace MTFvoiceApp
             int read = _source.Read(buffer, offset, count);
             for (int i = 0; i < read; i++)
             {
-                float x = buffer[offset + i];
-                float abs = Math.Abs(x);
-
-                float target = (abs >= _thresholdLin) ? 1f : _attenuationLin;
-
-                if (target > _currentGain)
-                {
-                    _currentGain += (target - _currentGain) * _attackCoef;
-                }
-                else
-                {
-                    _currentGain += (target - _currentGain) * _releaseCoef;
-                }
-
-                buffer[offset + i] = x * _currentGain;
+                buffer[offset + i] = Transform(buffer[offset + i]);
             }
             return read;
         }
 
-        static float TimeToCoef(float ms, int sampleRate)
+        private float Transform(float input)
+        {
+            float absInput = Math.Abs(input);
+            float target = absInput >= _thresholdLinear ? 1f : _attenuationLinear;
+            float diff = target - _currentGain;
+            float coef = diff > 0f ? _attackCoef : _releaseCoef;
+            _currentGain += diff * coef;
+
+            return input * _currentGain;
+        }
+
+        private static float TimeToCoef(float ms, int sampleRate)
         {
             if (ms <= 0)
             {

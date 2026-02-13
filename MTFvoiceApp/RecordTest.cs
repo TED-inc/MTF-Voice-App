@@ -2,12 +2,13 @@
 using NAudio.Dsp;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
+using MTFvoiceApp.Providers;
 
 namespace MTFvoiceApp
 {
     internal class RecordTest
     {
-        public static async Task MakeARecord(string outputFolder, int sampleRate = 16000, double durationSec = 2d)
+        public static async Task MakeRecord(string outputFolder, int sampleRate = 16000, double durationSec = 2d)
         {
             string recordPath = Path.Combine(outputFolder, "MTFvoiceApp_record.wav");
             string gatedPath = Path.Combine(outputFolder, "MTFvoiceApp_gated.wav");
@@ -124,55 +125,12 @@ namespace MTFvoiceApp
 
         private static ISampleProvider AddNoiseGateForQuetSections(ISampleProvider pipeline)
         {
-            return new SimpleNoiseGateSampleProvider(
-                    pipeline,
-                    thresholdDb: -45f,
-                    attenuationDb: -18f,
-                    attackMs: 10f,
-                    releaseMs: 200f);
+            return new SimpleNoiseGateSampleProvider(pipeline);
         }
 
         private static ISampleProvider AddNormalizeToPeak(ISampleProvider pipeline)
         {
-            const float TARGET_PEAK_DB = -1.0f; // common choice; avoids inter-sample-ish clipping risk
-
-            float max = FindPeak(pipeline);
-
-            bool isSilent = max <= 0;
-            if (isSilent)
-            {
-                return pipeline;
-            }
-
-            float targetLinear = AudioMath.DbToLinear(TARGET_PEAK_DB);
-            float gain = targetLinear / max;
-
-            if (pipeline is AudioFileReader afr)
-            {
-                afr.Position = 0;
-                return new VolumeSampleProvider(afr) { Volume = gain };
-            }
-
-            throw new InvalidOperationException("NormalizeToPeak requires a seekable source (e.g., AudioFileReader).");
-        }
-
-        private static float FindPeak(ISampleProvider source)
-        {
-            float max = 0f;
-            float[] buffer = new float[source.WaveFormat.SampleRate * source.WaveFormat.Channels]; // ~1 second
-            int read;
-            while ((read = source.Read(buffer, 0, buffer.Length)) > 0)
-            {
-                for (int n = 0; n < read; n++)
-                {
-                    float abs = Math.Abs(buffer[n]);
-                    if (abs > max)
-                    {
-                        max = abs;
-                    }
-                }
-            }
-            return max;
+            return new NormalizeToPeakSampleProvider(pipeline);
         }
     }
 }

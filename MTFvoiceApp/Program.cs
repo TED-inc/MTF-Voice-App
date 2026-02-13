@@ -6,7 +6,7 @@
 
         private static async Task Main(string[] args)
         {
-            await RecordTest.MakeARecord(DOWNLOADS_PATH);
+            await RecordTest.MakeRecord(DOWNLOADS_PATH);
         }
     }
 }
