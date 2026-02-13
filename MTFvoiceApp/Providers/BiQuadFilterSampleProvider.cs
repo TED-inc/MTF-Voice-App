@@ -30,5 +30,13 @@ namespace MTFvoiceApp.Providers
         {
             return _filter.Transform(input);
         }
+
+        public static BiQuadFilter CreateDefaultHighPassFilter(float sampleRate)
+        {
+            return BiQuadFilter.HighPassFilter(
+                sampleRate,
+                cutoffFrequency: 80f,
+                q: 0.707f);
+        }
     }
 }

@@ -117,10 +117,7 @@ namespace MTFvoiceApp
         {
             return new BiQuadFilterSampleProvider(
                 pipeline,
-                BiQuadFilter.HighPassFilter(
-                    pipeline.WaveFormat.SampleRate,
-                    cutoffFrequency: 80f,
-                    q: 0.707f));
+                BiQuadFilterSampleProvider.CreateDefaultHighPassFilter(pipeline.WaveFormat.SampleRate));
         }
 
         private static ISampleProvider AddNoiseGateForQuetSections(ISampleProvider pipeline)

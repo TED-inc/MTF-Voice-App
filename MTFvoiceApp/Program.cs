@@ -6,7 +6,7 @@
 
         private static async Task Main(string[] args)
         {
-            await RecordTest.MakeRecord(DOWNLOADS_PATH);
+            await LiveRecorder.MakeRecord(Path.Combine(DOWNLOADS_PATH, "MTFvoiceApp_record.wav"));
         }
     }
 }

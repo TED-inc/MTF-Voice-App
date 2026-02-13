@@ -1,6 +1,6 @@
-﻿using NAudio.CoreAudioApi;
+﻿using MTFvoiceApp.Providers;
+using NAudio.CoreAudioApi;
 using NAudio.Wave;
-using System.IO;
 
 namespace MTFvoiceApp
 {
@@ -10,11 +10,11 @@ namespace MTFvoiceApp
         {
             Console.WriteLine($"Recording {durationSec}s mono @ {sampleRate} Hz ...");
             await RecordMonoWasapiToFloatWav(path, sampleRate, durationSec);
+            Console.WriteLine($"Done");
         }
 
         private static async Task RecordMonoWasapiToFloatWav(string path, int sampleRate, double durationSec)
         {
-
             if (File.Exists(path))
             {
                 File.Delete(path);
@@ -26,19 +26,38 @@ namespace MTFvoiceApp
             WaveFormat desired = WaveFormat.CreateIeeeFloatWaveFormat(sampleRate, 1);
             capture.WaveFormat = desired;
 
-            using WaveFileWriter writer = new(path, capture.WaveFormat);
-
             BufferedWaveProvider provider = new(capture.WaveFormat) 
             { 
-                DiscardOnBufferOverflow = true
+                DiscardOnBufferOverflow = true,
+                ReadFully = false,
             };
 
-            TaskCompletionSource tcs = new();
+            ISampleProvider samples = provider.ToSampleProvider();
+            samples = new BiQuadFilterSampleProvider(
+                samples,
+                BiQuadFilterSampleProvider.CreateDefaultHighPassFilter(samples.WaveFormat.SampleRate));
+            samples = new SimpleNoiseGateSampleProvider(samples);
+            samples = new NormalizeToPeakSampleProvider(samples);
 
+            IWaveProvider processedWaveProvider = samples.ToWaveProvider16();
+            using WaveFileWriter writer = new(path, processedWaveProvider.WaveFormat);
+
+            byte[] procedToWriterBuffer = new byte[processedWaveProvider.WaveFormat.AverageBytesPerSecond / 10];
+            TaskCompletionSource tcs = new();
 
             capture.DataAvailable += (s, e) =>
             {
                 provider.AddSamples(e.Buffer, 0, e.BytesRecorded);
+                int read;
+                while (true)
+                {
+                    read = processedWaveProvider.Read(procedToWriterBuffer, 0, procedToWriterBuffer.Length);
+                    if (read == 0)
+                    {
+                        break;
+                    }
+                    writer.Write(procedToWriterBuffer, 0, read);
+                }
             };
 
             capture.RecordingStopped += (s, e) =>
@@ -58,6 +77,8 @@ namespace MTFvoiceApp
             capture.StopRecording();
 
             await tcs.Task;
+
+            writer.Flush();
         }
     }
 }
