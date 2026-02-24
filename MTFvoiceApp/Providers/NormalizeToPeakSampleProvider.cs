@@ -51,9 +51,6 @@ namespace MTFvoiceApp.Providers
             _recordingLengthInSec += _avgSecPerTransform;
             _maxInput = Math.Max(_maxInput, Math.Abs(input));
 
-            if (x++ % 100 == 0)
-                Console.WriteLine(_recordingLengthInSec);
-
             float gain = Math.Min(_maxGain, _targetLinear / _maxInput);
             float t = Math.Clamp(_recordingLengthInSec / _gainLerpDuration, 0f, 1f);
 

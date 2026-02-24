@@ -72,7 +72,17 @@ namespace MTFvoiceApp
 
             capture.StartRecording();
 
+            while (durationSec > 0f)
+            {
+                Console.WriteLine(durationSec);
+                await Task.Delay(1000);
+                durationSec -= 1f;
+            }
+
+            Console.WriteLine(durationSec);
             await Task.Delay(TimeSpan.FromSeconds(durationSec));
+
+
 
             capture.StopRecording();
 
