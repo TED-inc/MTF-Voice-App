@@ -47,12 +47,12 @@ internal class ProgramSample
         Console.WriteLine(path);
         using WaveFileWriter writer = new(path, WaveFormat.CreateIeeeFloatWaveFormat(sampleRate, 1));
 
-        var lp = BiQuadFilter.LowPassFilter(sampleRate, 7000f, 0.707f);
+        BiQuadFilter? lp = BiQuadFilter.LowPassFilter(sampleRate, 7000f, 0.707f);
 
         int totalSamples = (int)(seconds * sampleRate);
         int step = (int)(sampleRate * seconds / formants.Length);
         float[] samples = new float[step];
-        Random random = new Random(Seed: 0);
+        Random random = new(Seed: 0);
 
         float F0driftValueA = 0f;
         float F0driftValueB = 0f;

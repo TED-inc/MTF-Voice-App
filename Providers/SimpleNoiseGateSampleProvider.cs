@@ -22,7 +22,9 @@ internal sealed class SimpleNoiseGateSampleProvider : ISampleProvider
         float releaseMs = 200f)
     {
         if (source.WaveFormat.Channels != 1)
+        {
             throw new ArgumentException("SimpleNoiseGateSampleProvider expects mono input.");
+        }
 
         _source = source;
         _thresholdLinear = AudioMath.DbToLinear(thresholdDb);
