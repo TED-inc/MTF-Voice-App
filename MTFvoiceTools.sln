@@ -1,6 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MTFvoiceTools", "MTFvoiceTools.csproj", "{ECFA3D71-4415-4E67-998E-ADAD4C79B379}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MTFVoiceTools", "MTFVoiceTools.csproj", "{ECFA3D71-4415-4E67-998E-ADAD4C79B379}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

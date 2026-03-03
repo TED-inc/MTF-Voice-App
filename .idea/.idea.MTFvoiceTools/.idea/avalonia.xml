@@ -3,8 +3,8 @@
   <component name="AvaloniaProject">
     <option name="projectPerEditor">
       <map>
-        <entry key="App.axaml" value="MTFvoiceTools.csproj" />
-        <entry key="MainWindow.axaml" value="MTFvoiceTools.csproj" />
+        <entry key="App.axaml" value="MTFVoiceTools.csproj" />
+        <entry key="MainWindow.axaml" value="MTFVoiceTools.csproj" />
       </map>
     </option>
   </component>

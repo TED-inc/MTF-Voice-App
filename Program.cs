@@ -1,7 +1,7 @@
 ﻿using Avalonia;
 using System;
 
-namespace MTFvoiceTools;
+namespace MTFVoiceTools;
 
 class Program
 {

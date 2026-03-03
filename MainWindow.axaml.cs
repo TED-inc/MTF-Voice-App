@@ -1,10 +1,12 @@
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Styling;
+using MTFVoiceTools.Samples;
 using ScottPlot.Avalonia;
 
-namespace MTFvoiceTools;
+namespace MTFVoiceTools;
 
 public partial class MainWindow : Window
 {
@@ -22,6 +24,7 @@ public partial class MainWindow : Window
     
     public void ClickHandler(object sender, RoutedEventArgs args)
     {
+        _ = ProgramSample.Main();
         Message.Text = "Button clicked!";
     }
 }
