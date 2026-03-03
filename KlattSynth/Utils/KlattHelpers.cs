@@ -1,6 +1,5 @@
 ﻿using System;
 using MTFVoiceTools.KlattSynth.Filters;
-using MTFVoiceTools.KlattSynth.MainGenerator;
 using MTFVoiceTools.KlattSynth.Params;
 
 namespace MTFVoiceTools.KlattSynth.Utils;
@@ -46,8 +45,8 @@ internal static class KlattHelpers
 
     public static void SetOralFormantCasc(Resonator oralFormantCasc, FrameParameters fParms, int i)
     {
-        double f = (fParms.OralFormantFreq != null && i < fParms.OralFormantFreq.Length) ? fParms.OralFormantFreq[i] : double.NaN;
-        double bw = (fParms.OralFormantBw != null && i < fParms.OralFormantBw.Length) ? fParms.OralFormantBw[i] : double.NaN;
+        double f = i < fParms.OralFormantFreq.Count ? fParms.OralFormantFreq[i] : double.NaN;
+        double bw = i < fParms.OralFormantBw.Count ? fParms.OralFormantBw[i] : double.NaN;
 
         if (MathUtil.IsUsableFreqBw(f, bw))
         {
@@ -78,9 +77,9 @@ internal static class KlattHelpers
     {
         int formant = i + 1;
 
-        double f = (fParms.OralFormantFreq != null && i < fParms.OralFormantFreq.Length) ? fParms.OralFormantFreq[i] : double.NaN;
-        double bw = (fParms.OralFormantBw != null && i < fParms.OralFormantBw.Length) ? fParms.OralFormantBw[i] : double.NaN;
-        double db = (fParms.OralFormantDb != null && i < fParms.OralFormantDb.Length) ? fParms.OralFormantDb[i] : double.NaN;
+        double f = i < fParms.OralFormantFreq.Count ? fParms.OralFormantFreq[i] : double.NaN;
+        double bw = i < fParms.OralFormantBw.Count ? fParms.OralFormantBw[i] : double.NaN;
+        double db = i < fParms.OralFormantDb.Count ? fParms.OralFormantDb[i] : double.NaN;
 
         double peakGain = MathUtil.DbToLin(db);
 

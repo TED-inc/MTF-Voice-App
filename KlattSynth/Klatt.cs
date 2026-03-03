@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using MTFVoiceTools.KlattSynth.Filters;
 using MTFVoiceTools.KlattSynth.MainGenerator;
 using MTFVoiceTools.KlattSynth.Params;
@@ -10,12 +11,14 @@ namespace MTFVoiceTools.KlattSynth;
 
 public static class Klatt
 {
+    private const double Eps = 1E-10;
+    
     /// <summary>Generates a sound consisting of multiple frames.</summary>
-    public static double[] GenerateSound(MainParameters mParms, IReadOnlyList<FrameParameters> frames)
+    public static double[] GenerateSound(MainParameters param, IReadOnlyList<FrameParameters> frames)
     {
-        if (mParms == null)
+        if (param == null)
         {
-            throw new ArgumentNullException(nameof(mParms));
+            throw new ArgumentNullException(nameof(param));
         }
 
         if (frames == null)
@@ -23,73 +26,72 @@ public static class Klatt
             throw new ArgumentNullException(nameof(frames));
         }
 
-        Generator generator = new(mParms);
+        Generator generator = new(param);
 
-        int outBufLen = 0;
-        for (int i = 0; i < frames.Count; i++)
+        int outBufLen = frames.Sum(GetFeameBufferLength);
+
+        double[] outBufffer = new double[outBufLen];
+
+        int outPosition = 0;
+        foreach (FrameParameters frame in frames)
         {
-            outBufLen += (int)Math.Round(frames[i].Duration * mParms.SampleRate, MidpointRounding.AwayFromZero);
+            int frameLength = GetFeameBufferLength(frame);
+            double[] frameBuffer = new double[frameLength];
+
+            generator.GenerateFrame(frame, frameBuffer);
+
+            Array.Copy(frameBuffer, 0, outBufffer, outPosition, frameLength);
+            outPosition += frameLength;
         }
 
-        double[] outBuf = new double[outBufLen];
+        return outBufffer;
 
-        int outPos = 0;
-        for (int i = 0; i < frames.Count; i++)
+        int GetFeameBufferLength(FrameParameters frame)
         {
-            int frameLen = (int)Math.Round(frames[i].Duration * mParms.SampleRate, MidpointRounding.AwayFromZero);
-            double[] frameBuf = new double[frameLen];
-
-            generator.GenerateFrame(frames[i], frameBuf);
-
-            Array.Copy(frameBuf, 0, outBuf, outPos, frameLen);
-            outPos += frameLen;
+            return (int)Math.Round(frame.Duration * param.SampleRate, MidpointRounding.AwayFromZero);
         }
-
-        return outBuf;
     }
-
-    private const double Eps = 1E-10;
 
     /// <summary>
     /// Returns overall vocal-tract transfer function (numerator/denominator polynomials in z^-1).
     /// </summary>
     public static (double[] Numerator, double[] Denominator) GetVocalTractTransferFunctionCoefficients(
-        MainParameters mParms,
-        FrameParameters fParms)
+        MainParameters param,
+        FrameParameters frame)
     {
-        if (mParms == null)
+        if (param == null)
         {
-            throw new ArgumentNullException(nameof(mParms));
+            throw new ArgumentNullException(nameof(param));
         }
 
-        if (fParms == null)
+        if (frame == null)
         {
-            throw new ArgumentNullException(nameof(fParms));
+            throw new ArgumentNullException(nameof(frame));
         }
 
         RationalPoly voice = RationalPoly.PassThrough; // glottal source
 
-        LpFilter1 tiltFilter = new(mParms.SampleRate);
-        KlattHelpers.SetTiltFilter(tiltFilter, fParms.TiltDb);
+        LpFilter1 tiltFilter = new(param.SampleRate);
+        KlattHelpers.SetTiltFilter(tiltFilter, frame.TiltDb);
         voice = voice.Multiply(tiltFilter.GetTransferFunction(), Eps);
 
-        RationalPoly cascadeTrans = fParms.CascadeEnabled
-            ? GetCascadeBranchTransferFunctionCoefficients(mParms, fParms)
+        RationalPoly cascadeTrans = frame.CascadeEnabled
+            ? GetCascadeBranchTransferFunctionCoefficients(param, frame)
             : RationalPoly.Mute;
 
-        RationalPoly parallelTrans = fParms.ParallelEnabled
-            ? GetParallelBranchTransferFunctionCoefficients(mParms, fParms)
+        RationalPoly parallelTrans = frame.ParallelEnabled
+            ? GetParallelBranchTransferFunctionCoefficients(param, frame)
             : RationalPoly.Mute;
 
         RationalPoly branchesTrans = cascadeTrans.Add(parallelTrans, Eps);
 
         RationalPoly outTf = voice.Multiply(branchesTrans, Eps);
 
-        Resonator outputLpFilter = new(mParms.SampleRate);
-        outputLpFilter.Set(0, mParms.SampleRate / 2);
+        Resonator outputLpFilter = new(param.SampleRate);
+        outputLpFilter.Set(0, param.SampleRate / 2);
         outTf = outTf.Multiply(outputLpFilter.GetTransferFunction(), Eps);
 
-        double gainDb = double.IsNaN(fParms.GainDb) ? 0 : fParms.GainDb;
+        double gainDb = double.IsNaN(frame.GainDb) ? 0 : frame.GainDb;
         double gainLin = MathUtil.DbToLin(gainDb);
         outTf = outTf.Multiply(new RationalPoly(new[] { gainLin }, new[] { 1.0 }), Eps);
 

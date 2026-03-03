@@ -1,5 +1,4 @@
 ﻿using System;
-using MTFVoiceTools.KlattSynth.MainGenerator;
 using MTFVoiceTools.KlattSynth.Utils;
 
 namespace MTFVoiceTools.KlattSynth.Params;

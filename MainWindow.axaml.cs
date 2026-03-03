@@ -6,7 +6,6 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Styling;
 using MTFVoiceTools.KlattSynth;
-using MTFVoiceTools.KlattSynth.MainGenerator;
 using MTFVoiceTools.KlattSynth.Params;
 using MTFVoiceTools.Samples;
 using NAudio.Wave;

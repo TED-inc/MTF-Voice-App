@@ -1,5 +1,4 @@
 ﻿using System;
-using MTFVoiceTools.KlattSynth.MainGenerator;
 using MTFVoiceTools.KlattSynth.Polynomial;
 using MTFVoiceTools.KlattSynth.Utils;
 

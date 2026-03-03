@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace MTFVoiceTools.KlattSynth.Params;
 
@@ -30,8 +31,8 @@ public sealed class FrameParameters
     public double NasalFormantFreq { get; init; } = double.NaN;
     public double NasalFormantBw { get; init; } = double.NaN;
 
-    public double[] OralFormantFreq { get; init; } = Array.Empty<double>();
-    public double[] OralFormantBw { get; init; } = Array.Empty<double>();
+    public IReadOnlyList<double> OralFormantFreq { get; init; } = Array.Empty<double>();
+    public IReadOnlyList<double> OralFormantBw { get; init; } = Array.Empty<double>();
 
     // Cascade branch:
     public bool CascadeEnabled { get; init; } = true;
@@ -50,5 +51,5 @@ public sealed class FrameParameters
     public double FricationMod { get; init; } = 0;
     public double ParallelBypassDb { get; init; } = -99;
     public double NasalFormantDb { get; init; } = -99;
-    public double[] OralFormantDb { get; init; } = Array.Empty<double>();
+    public IReadOnlyList<double> OralFormantDb { get; init; } = Array.Empty<double>();
 }

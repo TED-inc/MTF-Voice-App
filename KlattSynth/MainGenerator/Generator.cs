@@ -83,43 +83,43 @@ public sealed class Generator
     }
 
     /// <summary>
-    /// Generates a frame. The length is determined by <paramref name="outBuf"/>; FrameParameters.Duration is ignored.
+    /// Generates a frame. The length is determined by <paramref name="outputBuffer"/>; FrameParameters.Duration is ignored.
     /// </summary>
-    public void GenerateFrame(FrameParameters fParms, double[] outBuf)
+    public void GenerateFrame(FrameParameters frameParams, double[] outputBuffer)
     {
-        if (fParms == null)
+        if (frameParams == null)
         {
-            throw new ArgumentNullException(nameof(fParms));
+            throw new ArgumentNullException(nameof(frameParams));
         }
 
-        if (outBuf == null)
+        if (outputBuffer == null)
         {
-            throw new ArgumentNullException(nameof(outBuf));
+            throw new ArgumentNullException(nameof(outputBuffer));
         }
 
-        if (_fParms != null && ReferenceEquals(fParms, _fParms))
+        if (_fParms != null && ReferenceEquals(frameParams, _fParms))
         {
-            throw new ArgumentException("FrameParameters structure must not be re-used (matches TS behavior).", nameof(fParms));
+            throw new ArgumentException("FrameParameters structure must not be re-used (matches TS behavior).", nameof(frameParams));
         }
 
-        _newFParms = fParms;
+        _newFParms = frameParams;
 
-        for (int outPos = 0; outPos < outBuf.Length; outPos++)
+        for (int outPos = 0; outPos < outputBuffer.Length; outPos++)
         {
             if (_pState == null || _pState.PositionInPeriod >= _pState.PeriodLength)
             {
                 StartNewPeriod();
             }
 
-            outBuf[outPos] = ComputeNextOutputSignalSample();
+            outputBuffer[outPos] = ComputeNextOutputSignalSample();
             _pState!.PositionInPeriod++;
             _absPosition++;
         }
 
-        if (double.IsNaN(fParms.GainDb))
+        if (double.IsNaN(frameParams.GainDb))
         {
             // Automatic gain control (AGC)
-            SignalUtil.AdjustSignalGain(outBuf, fParms.AgcRmsLevel);
+            SignalUtil.AdjustSignalGain(outputBuffer, frameParams.AgcRmsLevel);
         }
     }
 
