@@ -1,0 +1,17 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:ScottPlot="clr-namespace:ScottPlot.Avalonia;assembly=ScottPlot.Avalonia"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        x:Class="MTFvoiceTools.MainWindow"
+        Title="MTFvoiceTools">
+    <Grid RowDefinitions="Auto,*" Margin="20">
+        <StackPanel Grid.Row="0">
+            <Button Click="ClickHandler">Press Me!</Button>
+            <TextBlock Margin="0 10" x:Name="Message" TextWrapping="Wrap">Lorem ipsumS mollis. Donec viverra ante eget ipsum consectetur sollicitudin. Quisque auctor egestas neque. Vivamus dictum ex congue, facilisis mi a, dapibus augue.
+            </TextBlock>
+        </StackPanel>
+        <ScottPlot:AvaPlot Grid.Row="1" x:Name="AvaPlot1"/>
+    </Grid>
+</Window>
