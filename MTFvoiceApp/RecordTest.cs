@@ -1,4 +1,7 @@
-﻿using NAudio.CoreAudioApi;
+﻿using System;
+using System.IO;
+using System.Threading.Tasks;
+using NAudio.CoreAudioApi;
 using NAudio.Dsp;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;

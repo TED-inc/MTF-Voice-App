@@ -1,4 +1,7 @@
-﻿using MTFvoiceApp.Providers;
+﻿using System;
+using System.IO;
+using System.Threading.Tasks;
+using MTFvoiceApp.Providers;
 using NAudio.CoreAudioApi;
 using NAudio.Wave;
 

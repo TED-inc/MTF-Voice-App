@@ -17,6 +17,7 @@
             <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
             <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
         </PackageReference>
+        <PackageReference Include="NAudio" Version="2.2.1" />
         <PackageReference Include="ScottPlot.Avalonia" Version="5.1.57" />
     </ItemGroup>
 </Project>

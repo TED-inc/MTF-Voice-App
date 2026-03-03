@@ -1,4 +1,6 @@
-﻿namespace MTFvoiceApp
+﻿using System;
+
+namespace MTFvoiceApp
 {
     internal static class AudioMath
     {
