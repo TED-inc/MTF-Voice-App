@@ -12,6 +12,6 @@
             <TextBlock Margin="0 10" x:Name="Message" TextWrapping="Wrap">Lorem ipsumS mollis. Donec viverra ante eget ipsum consectetur sollicitudin. Quisque auctor egestas neque. Vivamus dictum ex congue, facilisis mi a, dapibus augue.
             </TextBlock>
         </StackPanel>
-        <ScottPlot:AvaPlot Grid.Row="1" x:Name="AvaPlot1"/>
+        <ScottPlot:AvaPlot Grid.Row="1" x:Name="AvaPlot"/>
     </Grid>
 </Window>
