@@ -31,7 +31,7 @@ public static class FormantLpc
         CalcualteFormantsWithLpc(
             double[] sample,
             int sampleRate,
-            int maxFormants = 5,
+            int maxFormants = 4,
             double lpcWindowLengthSeconds = 0.025,
             double? lpcWindowCenterSecond = null,
             double formantCeilingHz = 5500.0,
@@ -56,7 +56,7 @@ public static class FormantLpc
         double[] a = LpcBurg(sample, order);
 
         // 6) Roots -> formants + bandwidth
-        Complex[] roots = PolynomialRoots(a);
+        Complex[] roots = PolynomialRoots(a);  
 
         // Keep one from each conjugate pair: imag > 0
         Complex[] upper = roots.Where(r => r.Imaginary > 0).ToArray();

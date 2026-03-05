@@ -28,14 +28,14 @@ public static class Klatt
 
         Generator generator = new(param, randomSeed: 0);
 
-        int outBufLen = frames.Sum(GetFeameBufferLength);
+        int outBufLen = frames.Sum(f => f.GetFeameBufferLength(param.SampleRate));
 
         double[] outBufffer = new double[outBufLen];
 
         int outPosition = 0;
         foreach (FrameParameters frame in frames)
         {
-            int frameLength = GetFeameBufferLength(frame);
+            int frameLength = frame.GetFeameBufferLength(param.SampleRate);
             double[] frameBuffer = new double[frameLength];
 
             generator.GenerateFrame(frame, frameBuffer);
@@ -45,11 +45,6 @@ public static class Klatt
         }
 
         return outBufffer;
-
-        int GetFeameBufferLength(FrameParameters frame)
-        {
-            return (int)Math.Round(frame.Duration * param.SampleRate, MidpointRounding.AwayFromZero);
-        }
     }
 
     /// <summary>

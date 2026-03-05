@@ -52,4 +52,9 @@ public sealed class FrameParameters
     public double ParallelBypassDb { get; init; } = -99;
     public double NasalFormantDb { get; init; } = -99;
     public IReadOnlyList<double> OralFormantDb { get; init; } = Array.Empty<double>();
+    
+    public int GetFeameBufferLength(int sampleRate)
+    {
+        return (int)Math.Round(Duration * sampleRate, MidpointRounding.AwayFromZero);
+    }
 }
