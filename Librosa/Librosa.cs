@@ -25,7 +25,6 @@ using NAudio.Wave;
 
 namespace MTFVoiceTools.Librosa;
 
-
 public static class FormantLpc
 {
     public static double[]
@@ -363,8 +362,8 @@ public static class FormantLpc
             double samplePosition = resampleIndex * step;
             int floorSampleIndex = (int)Math.Floor(samplePosition);
             int ceilSampleIndex = Math.Min(floorSampleIndex + 1, sample.Length - 1);
-            double fracrion = samplePosition - floorSampleIndex;
-            resampled[resampleIndex] = sample[floorSampleIndex] * (1 - fracrion) + sample[ceilSampleIndex] * fracrion;
+            double lerpT = samplePosition - floorSampleIndex;
+            resampled[resampleIndex] = sample[floorSampleIndex] * (1 - lerpT) + sample[ceilSampleIndex] * lerpT;
         }
         
         return resampled;
