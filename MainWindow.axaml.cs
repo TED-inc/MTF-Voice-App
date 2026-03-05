@@ -7,6 +7,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Styling;
+using MTFVoiceTools.KlattSynth;
 using MTFVoiceTools.KlattSynth.Params;
 using MTFVoiceTools.Librosa;
 using MTFVoiceTools.Samples;
@@ -51,17 +52,21 @@ public partial class MainWindow : Window
             //FrameParametersSamples.FemaleU,
         ];
         
-        //double[] samples = Klatt.GenerateSound(mainParams, frames);
-        //
-        //using WaveFileWriter writer = new(Path.Combine(DOWNLOADS_PATH, "MTFvoiceTools_record.wav"), WaveFormat.CreateIeeeFloatWaveFormat(44100, 1));
-        //writer.WriteSamples(samples.Select(s => (float)s).ToArray(), 0, samples.Length);
+        double[] samples = Klatt.GenerateSound(mainParams, frames);
+
+        using (WaveFileWriter writer = new(Path.Combine(DOWNLOADS_PATH, "MTFvoiceTools_record.wav"),
+                   WaveFormat.CreateIeeeFloatWaveFormat(44100, 1)))
+        {
+            writer.WriteSamples(samples.Select(s => (float)s).ToArray(), 0, samples.Length);
+        }
+        
         //Console.WriteLine(samples.Length);
         
-        using WaveFileReader reader = new(Path.Combine(DOWNLOADS_PATH, "My_record.wav"));
-        ISampleProvider sampleProvider = reader.ToSampleProvider();
-        float[] buffer = new float[reader.SampleCount];
-        sampleProvider.Read(buffer, 0, buffer.Length);
-        double[] samples = buffer.Select(x => (double)x).ToArray();
+        //using WaveFileReader reader = new(Path.Combine(DOWNLOADS_PATH, "My_record.wav"));
+        //ISampleProvider sampleProvider = reader.ToSampleProvider();
+        //float[] buffer = new float[reader.SampleCount];
+        //sampleProvider.Read(buffer, 0, buffer.Length);
+        //double[] samples = buffer.Select(x => (double)x).ToArray();
         
         //AvaPlot.Plot.Add.Signal(samples, period: 1 / mainParams.SampleRate);
 
@@ -120,7 +125,7 @@ public partial class MainWindow : Window
         
         
         var (F, BW, srUsed, a) = FormantLpc.LpcFormantsBurgLikePraat(
-            Path.Combine(DOWNLOADS_PATH, "My_record.wav"),
+            Path.Combine(DOWNLOADS_PATH, "MTFvoiceTools_record.wav"),
             formantCeilingHz: 5500.0,
             maxFormants: 5,
             windowLengthS: 0.025,
