@@ -5,7 +5,7 @@ namespace MTFVoiceTools.KlattSynth.Params;
 
 public sealed class MainParameters
 {
-    public MainParameters(double sampleRate, GlottalSourceType glottalSourceType)
+    public MainParameters(int sampleRate, GlottalSourceType glottalSourceType)
     {
         if (MathUtil.IsFinite(sampleRate) == false || sampleRate <= 0)
         {
@@ -16,7 +16,7 @@ public sealed class MainParameters
         GlottalSourceType = glottalSourceType;
     }
     
-    public double SampleRate { get; }
+    public int SampleRate { get; }
 
     public GlottalSourceType GlottalSourceType { get; }
 }

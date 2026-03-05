@@ -88,7 +88,7 @@ public static class Klatt
         RationalPoly outTf = voice.Multiply(branchesTrans, Eps);
 
         Resonator outputLpFilter = new(param.SampleRate);
-        outputLpFilter.Set(0, param.SampleRate / 2);
+        outputLpFilter.Set(0, param.SampleRate / 2d);
         outTf = outTf.Multiply(outputLpFilter.GetTransferFunction(), Eps);
 
         double gainDb = double.IsNaN(frame.GainDb) ? 0 : frame.GainDb;

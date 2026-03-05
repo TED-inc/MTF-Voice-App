@@ -52,7 +52,7 @@ public sealed class Generator
         _flutterTimeOffset = _rng.NextDouble() * 1000.0;
 
         _outputLpFilter = new Resonator(_mParms.SampleRate);
-        _outputLpFilter.Set(0, _mParms.SampleRate / 2);
+        _outputLpFilter.Set(0, _mParms.SampleRate / 2d);
 
         InitGlottalSource();
 
@@ -232,7 +232,7 @@ public sealed class Generator
         MainParameters mParms = _mParms;
         FrameParameters fParms = _fParms!;
 
-        double flutterTime = (_absPosition / mParms.SampleRate) + _flutterTimeOffset;
+        double flutterTime = (_absPosition / (double)mParms.SampleRate) + _flutterTimeOffset;
         pState.F0 = MathUtil.PerformFrequencyModulation(fParms.F0, fParms.FlutterLevel, flutterTime);
 
         pState.PeriodLength = (pState.F0 > 0)

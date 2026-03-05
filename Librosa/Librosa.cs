@@ -25,40 +25,121 @@ using NAudio.Wave;
 
 namespace MTFVoiceTools.Librosa;
 
-// --- Exceptions mirroring librosa-style ---------------------------------
-public class LibrosaError : Exception
-{
-    public LibrosaError(string message) : base(message) { }
-}
-
-public class ParameterError : LibrosaError
-{
-    public ParameterError(string message) : base(message) { }
-}
 
 public static class FormantLpc
 {
-    // Praat-style pre-emphasis: y[n] = x[n] - a*x[n-1], a = exp(-2*pi*fc/sr)
-    public static double[] PreemphasisPraat(double[] x, int sr, double preemphFromHz = 50.0)
+    public static double[]
+        CalcualteFormantsWithLpc(
+            double[] sample,
+            int sampleRate,
+            int maxFormants = 5,
+            double lpcWindowLengthSeconds = 0.025,
+            double? lpcWindowCenterSecond = null,
+            double formantCeilingHz = 5500.0,
+            double preemphFromHz = 50.0)
     {
-        if (x == null || x.Length == 0)
+        (double[] lpcWindow, sampleRate) = CreateAndFillLpcWindow(
+            sample, 
+            sampleRate, 
+            lpcWindowLengthSeconds, 
+            lpcWindowCenterSecond, 
+            formantCeilingHz, 
+            preemphFromHz);
+
+        // 4) Gaussian-like window
+        double[] w = GaussianWindow(lpcWindow.Length);
+        for (int i = 0; i < lpcWindow.Length; i++)
         {
-            return Array.Empty<double>();
+            lpcWindow[i] *= w[i];
         }
 
-        double a = Math.Exp(-2.0 * Math.PI * preemphFromHz / sr);
+        // 5) LPC via Burg; Praat poles = 2*maxFormants => order = 2*maxFormants
+        int order = 2 * maxFormants;
+        double[] a = LpcBurg(lpcWindow, order);
 
-        double[] y = new double[x.Length];
-        y[0] = x[0];
-        for (int i = 1; i < x.Length; i++)
+        // 6) Roots -> formants + bandwidth
+        Complex[] roots = PolynomialRoots(a);
+
+        // Keep one from each conjugate pair: imag > 0
+        Complex[] upper = roots.Where(r => r.Imaginary > 0).ToArray();
+
+        // freqs = angle(root) * sr/(2*pi)
+        // bws   = -0.5 * (sr/pi) * ln(|root|)
+        List<(double f, double bw)> cand = new();
+        
+        foreach (Complex r in upper)
         {
-            y[i] = x[i] - a * x[i - 1];
+            double ang = Math.Atan2(r.Imaginary, r.Real);
+            double freq = ang * (sampleRate / (2.0 * Math.PI));
+            double mag = r.Magnitude;
+            if (mag <= 0)
+            {
+                continue;
+            }
+
+            double bw = -0.5 * (sampleRate / Math.PI) * Math.Log(mag);
+
+            // plausibility filter (same as Python)
+            if (freq > 50.0 && freq < formantCeilingHz && bw > 0.0 && bw < 400.0)
+            {
+                cand.Add((freq, bw));
+            }
+        }
+
+        (double f, double bw)[] sorted = cand.OrderBy(t => t.f).ToArray();
+        return sorted.Take(maxFormants).Select(t => t.f).ToArray();
+    }
+
+    private static (double[] lpcWindow, int sampleRate) CreateAndFillLpcWindow(
+        double[] sample, 
+        int sampleRate, 
+        double lpcWindowLengthSeconds,
+        double? lpcWindowCenterSecond,
+        double formantCeilingHz,
+        double preemphFromHz)
+    {
+        int targetSampleRate = (int)Math.Round(2.0 * formantCeilingHz);
+        
+        sample = ResampleLinear(sample, sampleRate, targetSampleRate);
+        sampleRate = targetSampleRate;
+        
+        int lpcWindowLength = (int)Math.Round(lpcWindowLengthSeconds * sampleRate);
+        if (lpcWindowLength < 16)
+        {
+            throw new ArgumentException("Window too small.");
+        }
+
+        int lpcWindowCenterIndex = lpcWindowCenterSecond.HasValue ? (int)Math.Round(lpcWindowCenterSecond.Value * sampleRate) : (sample.Length / 2);
+        int lpcWindowStartIndex = Math.Max(0, lpcWindowCenterIndex - lpcWindowLength / 2);
+
+        double[] lpcWindow = new double[lpcWindowLength];
+        int availableLpcWindowLenthg = Math.Max(0, Math.Min(lpcWindowLength, sample.Length - lpcWindowStartIndex));
+        if (availableLpcWindowLenthg > 0)
+        {
+            Array.Copy(sample, lpcWindowStartIndex, lpcWindow, 0, availableLpcWindowLenthg);
+        }
+        
+        lpcWindow = PreemphasisPraat(lpcWindow, sampleRate, preemphFromHz);
+        return (lpcWindow, sampleRate);
+    }
+
+
+    // Praat-style pre-emphasis: y[n] = x[n] - a*x[n-1], a = exp(-2*pi*fc/sr)
+    private static double[] PreemphasisPraat(double[] sample, int sampleRate, double preemphFromHz)
+    {
+        double a = Math.Exp(-2.0 * Math.PI * preemphFromHz / sampleRate);
+
+        double[] y = new double[sample.Length];
+        y[0] = sample[0];
+        for (int i = 1; i < sample.Length; i++)
+        {
+            y[i] = sample[i] - a * sample[i - 1];
         }
         return y;
     }
 
     // Gaussian-like window similar in spirit to Praat's
-    public static double[] GaussianWindow(int n)
+    private static double[] GaussianWindow(int n)
     {
         if (n <= 0)
         {
@@ -79,39 +160,34 @@ public static class FormantLpc
         return w;
     }
 
-    // Tiny value analogous to np.finfo(...).tiny for double
-    private static double TinyDouble() => BitConverter.Int64BitsToDouble(0x0010000000000000); // ~2.2250738585072014E-308
-
     private static void ValidateAudio(double[] y)
     {
         if (y == null)
         {
-            throw new ParameterError("Audio data must not be null.");
+            throw new ArgumentNullException("Audio data must not be null.");
         }
 
         if (y.Length == 0)
         {
-            throw new ParameterError("Audio data must not be empty.");
+            throw new ArgumentException("Audio data must not be empty.");
         }
 
         for (int i = 0; i < y.Length; i++)
         {
             if (double.IsNaN(y[i]) || double.IsInfinity(y[i]))
             {
-                throw new ParameterError("Audio buffer is not finite everywhere.");
+                throw new ArgumentException("Audio buffer is not finite everywhere.");
             }
         }
     }
 
-    private static bool IsPositiveInt(int x) => x > 0;
-
     // --- Burg LPC (1D) ---------------------------------------------------
     // Returns AR denominator polynomial a[0..order], with a[0]=1 (like librosa)
-    public static double[] LpcBurg(double[] y, int order)
+    private static double[] LpcBurg(double[] y, int order)
     {
-        if (!IsPositiveInt(order))
+        if (order <= 0)
         {
-            throw new ParameterError($"order={order} must be an integer > 0");
+            throw new ArgumentException($"order={order} must be an integer > 0");
         }
 
         ValidateAudio(y);
@@ -119,7 +195,7 @@ public static class FormantLpc
         int n = y.Length;
         if (n < order + 1)
         {
-            throw new ParameterError($"Input is too short for order={order}. Need at least {order + 1} samples, got {n}.");
+            throw new ArgumentException($"Input is too short for order={order}. Need at least {order + 1} samples, got {n}.");
         }
 
         // Coeff arrays
@@ -127,8 +203,6 @@ public static class FormantLpc
         double[] arPrev = new double[order + 1];
         ar[0] = 1.0;
         arPrev[0] = 1.0;
-
-        double epsilon = TinyDouble();
 
         // Forward/backward errors
         // fwd = y[1:], bwd = y[:-1]
@@ -153,13 +227,11 @@ public static class FormantLpc
                 num += bwd[k] * fwd[k];
             }
 
-            double reflect = (-2.0 * num) / (den + epsilon);
+            double reflect = (-2.0 * num) / (den + double.Epsilon);
 
             // Levinson-Durbin recursion update
             // swap ar/arPrev buffers
-            double[] tmp = arPrev;
-            arPrev = ar;
-            ar = tmp;
+            (arPrev, ar) = (ar, arPrev);
 
             ar[0] = 1.0;
             for (int j = 1; j <= i + 1; j++)
@@ -194,7 +266,7 @@ public static class FormantLpc
 
             if (double.IsNaN(den) || double.IsInfinity(den))
             {
-                throw new FloatingPointException("numerical error in Burg recursion; input ill-conditioned?");
+                throw new Exception("numerical error in Burg recursion; input ill-conditioned?");
             }
 
             // Shift errors for next order
@@ -215,15 +287,10 @@ public static class FormantLpc
         return ar;
     }
 
-    public class FloatingPointException : Exception
-    {
-        public FloatingPointException(string message) : base(message) { }
-    }
-
     // --- Polynomial roots (np.roots) via companion matrix ----------------
     // For polynomial a[0]*x^n + a[1]*x^(n-1) + ... + a[n]
     // We assume a[0] != 0. (Here a[0]=1 from LPC.)
-    public static Complex[] PolynomialRoots(double[] a)
+    private static Complex[] PolynomialRoots(double[] a)
     {
         if (a == null || a.Length < 2)
         {
@@ -234,7 +301,7 @@ public static class FormantLpc
         double a0 = a[0];
         if (a0 == 0.0)
         {
-            throw new ParameterError("Leading coefficient is zero; cannot compute roots.");
+            throw new ArgumentException("Leading coefficient is zero; cannot compute roots.");
         }
 
         // Build companion matrix (n x n)
@@ -263,19 +330,19 @@ public static class FormantLpc
 
     // --- Audio loading/resampling ---------------------------------------
     // Load WAV -> mono double[] in [-1,1] and sample rate.
-    public static (double[] x, int sr) LoadWavMono(string wavPath)
+    private static (double[] x, int sr) LoadWavMono(string wavPath)
     {
         if (!File.Exists(wavPath))
         {
             throw new FileNotFoundException("WAV file not found.", wavPath);
         }
 
-        using AudioFileReader reader = new AudioFileReader(wavPath); // outputs float samples, auto converts
+        using AudioFileReader reader = new(wavPath); // outputs float samples, auto converts
         int sr = reader.WaveFormat.SampleRate;
         int ch = reader.WaveFormat.Channels;
 
         float[] buffer = new float[4096 * ch];
-        List<double> samples = new List<double>(sr * 10);
+        List<double> samples = new(sr * 10);
 
         int read;
         while ((read = reader.Read(buffer, 0, buffer.Length)) > 0)
@@ -295,126 +362,30 @@ public static class FormantLpc
 
         return (samples.ToArray(), sr);
     }
-
-    // Simple linear resampler (not bandlimited).
-    public static double[] ResampleLinear(double[] x, int origSr, int targetSr)
+    
+    private static double[] ResampleLinear(double[] sample, int originalSampleRate, int targetSampleRate)
     {
-        if (origSr == targetSr)
+        if (originalSampleRate == targetSampleRate || sample.Length == 0)
         {
-            return x;
+            return sample;
         }
 
-        if (x.Length == 0)
+        double ratio = (double)targetSampleRate / originalSampleRate;
+        int resampleLength = (int)Math.Round(sample.Length * ratio);
+        resampleLength = Math.Max(1, resampleLength);
+
+        double[] resampled = new double[resampleLength];
+        double step = (double)(sample.Length - 1) / (resampleLength - 1);
+
+        for (int resampleIndex = 0; resampleIndex < resampleLength; resampleIndex++)
         {
-            return x;
+            double samplePosition = resampleIndex * step;
+            int floorSampleIndex = (int)Math.Floor(samplePosition);
+            int ceilSampleIndex = Math.Min(floorSampleIndex + 1, sample.Length - 1);
+            double fracrion = samplePosition - floorSampleIndex;
+            resampled[resampleIndex] = sample[floorSampleIndex] * (1 - fracrion) + sample[ceilSampleIndex] * fracrion;
         }
-
-        double ratio = (double)targetSr / origSr;
-        int outLen = (int)Math.Round(x.Length * ratio);
-        if (outLen < 1)
-        {
-            outLen = 1;
-        }
-
-        double[] y = new double[outLen];
-        double step = (double)(x.Length - 1) / (outLen - 1);
-
-        for (int i = 0; i < outLen; i++)
-        {
-            double pos = i * step;
-            int i0 = (int)Math.Floor(pos);
-            int i1 = Math.Min(i0 + 1, x.Length - 1);
-            double frac = pos - i0;
-            y[i] = x[i0] * (1.0 - frac) + x[i1] * frac;
-        }
-        return y;
-    }
-
-    // --- Main function: Praat-like formants from LPC(Burg) ---------------
-    public static (double[] formantsHz, double[] bandwidthsHz, int srUsed, double[] lpcA)
-        LpcFormantsBurgLikePraat(
-            string wavPath,
-            double formantCeilingHz = 5500.0,
-            int maxFormants = 5,
-            double windowLengthS = 0.025,
-            double? timeS = null,
-            double preemphFromHz = 50.0)
-    {
-        // Load mono
-        (double[] x, int sr) = LoadWavMono(wavPath);
-
-        // 1) Resample to 2 * ceiling (Praat behavior)
-        int targetSr = (int)Math.Round(2.0 * formantCeilingHz);
-        if (sr != targetSr)
-        {
-            x = ResampleLinear(x, sr, targetSr);
-            sr = targetSr;
-        }
-
-        // 2) Choose analysis frame
-        int N = (int)Math.Round(windowLengthS * sr);
-        if (N < 16)
-        {
-            throw new ParameterError("Window too small.");
-        }
-
-        int center = timeS.HasValue ? (int)Math.Round(timeS.Value * sr) : (x.Length / 2);
-        int start = Math.Max(0, center - (N / 2));
-
-        double[] frame = new double[N];
-        int available = Math.Max(0, Math.Min(N, x.Length - start));
-        if (available > 0)
-        {
-            Array.Copy(x, start, frame, 0, available);
-        }
-        // rest stays zero if padded
-
-        // 3) Pre-emphasis
-        frame = PreemphasisPraat(frame, sr, preemphFromHz);
-
-        // 4) Gaussian-like window
-        double[] w = GaussianWindow(N);
-        for (int i = 0; i < N; i++)
-        {
-            frame[i] *= w[i];
-        }
-
-        // 5) LPC via Burg; Praat poles = 2*maxFormants => order = 2*maxFormants
-        int order = 2 * maxFormants;
-        double[] a = LpcBurg(frame, order);
-
-        // 6) Roots -> formants + bandwidth
-        Complex[] roots = PolynomialRoots(a);
-
-        // Keep one from each conjugate pair: imag > 0
-        Complex[] upper = roots.Where(r => r.Imaginary > 0).ToArray();
-
-        // freqs = angle(root) * sr/(2*pi)
-        // bws   = -0.5 * (sr/pi) * ln(|root|)
-        List<(double f, double bw)> cand = new List<(double f, double bw)>();
-        foreach (Complex r in upper)
-        {
-            double ang = Math.Atan2(r.Imaginary, r.Real);
-            double freq = ang * (sr / (2.0 * Math.PI));
-            double mag = r.Magnitude;
-            if (mag <= 0)
-            {
-                continue;
-            }
-
-            double bw = -0.5 * (sr / Math.PI) * Math.Log(mag);
-
-            // plausibility filter (same as Python)
-            if (freq > 50.0 && freq < formantCeilingHz && bw > 0.0 && bw < 400.0)
-            {
-                cand.Add((freq, bw));
-            }
-        }
-
-        (double f, double bw)[] sorted = cand.OrderBy(t => t.f).ToArray();
-        double[] F = sorted.Take(maxFormants).Select(t => t.f).ToArray();
-        double[] BW = sorted.Take(maxFormants).Select(t => t.bw).ToArray();
-
-        return (F, BW, sr, a);
+        
+        return resampled;
     }
 }
