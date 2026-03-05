@@ -7,8 +7,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Styling;
-using MTFVoiceTools.KlattSynth;
 using MTFVoiceTools.KlattSynth.Params;
+using MTFVoiceTools.Librosa;
 using MTFVoiceTools.Samples;
 using NAudio.Wave;
 using NWaves.Transforms;
@@ -51,7 +51,7 @@ public partial class MainWindow : Window
             //FrameParametersSamples.FemaleU,
         ];
         
-        double[] samples = Klatt.GenerateSound(mainParams, frames);
+        //double[] samples = Klatt.GenerateSound(mainParams, frames);
         //
         //using WaveFileWriter writer = new(Path.Combine(DOWNLOADS_PATH, "MTFvoiceTools_record.wav"), WaveFormat.CreateIeeeFloatWaveFormat(44100, 1));
         //writer.WriteSamples(samples.Select(s => (float)s).ToArray(), 0, samples.Length);
@@ -61,7 +61,7 @@ public partial class MainWindow : Window
         ISampleProvider sampleProvider = reader.ToSampleProvider();
         float[] buffer = new float[reader.SampleCount];
         sampleProvider.Read(buffer, 0, buffer.Length);
-        //double[] samples = buffer.Select(x => (double)x).ToArray();
+        double[] samples = buffer.Select(x => (double)x).ToArray();
         
         //AvaPlot.Plot.Add.Signal(samples, period: 1 / mainParams.SampleRate);
 
@@ -96,15 +96,11 @@ public partial class MainWindow : Window
         signal.Data.XOffset = minX;
         signal.Data.YOffset = 15;
 
-        double[] frame = samples.Skip(samples.Length / 2).Take((int)(mainParams.SampleRate * 0.25)).ToArray();
+        //double[] frame = samples.Skip(samples.Length / 2).Take((int)(mainParams.SampleRate * 0.25)).ToArray();
         (double f0, double score) = EstimateF0(magnitudeDb, period, mainParams.SampleRate, new());
-        (double f1, double f2, double f3) = EstimateFormants(frame, mainParams.SampleRate);
-        Console.WriteLine($"{f0:F0} {f1:F0} {f2:F0} {f3:F0}");
+        //(double f1, double f2, double f3) = EstimateFormants(frame, mainParams.SampleRate);
+        //Console.WriteLine($"{f0:F0} {f1:F0} {f2:F0} {f3:F0}");
 
-        AvaPlot.Plot.Add.VerticalLine(f0);
-        AvaPlot.Plot.Add.VerticalLine(f1);
-        AvaPlot.Plot.Add.VerticalLine(f2);
-        AvaPlot.Plot.Add.VerticalLine(f3);
         
         //smooth = GaussianOctaveSmoothDb(magnitudeDb, period, fraction: 3, radiusSigmas: 3);
         //signal = AvaPlot.Plot.Add.Signal(smooth, period);
@@ -119,6 +115,28 @@ public partial class MainWindow : Window
         //smooth = GaussianOctaveSmoothDb(magnitudeDb, period, fraction: 6, radiusSigmas: 6);
         //signal = AvaPlot.Plot.Add.Signal(smooth, period);
         //signal.Data.XOffset = minX;
+        
+
+        
+        
+        var (F, BW, srUsed, a) = FormantLpc.LpcFormantsBurgLikePraat(
+            Path.Combine(DOWNLOADS_PATH, "My_record.wav"),
+            formantCeilingHz: 5500.0,
+            maxFormants: 5,
+            windowLengthS: 0.025,
+            timeS: null,
+            preemphFromHz: 50.0
+        );
+        
+        Console.WriteLine($"Pitch (Hz): {f0:F0}");
+        Console.WriteLine("Formants (Hz): " + string.Join(", ", F.Select(v => v.ToString("F0"))));
+        Console.WriteLine("Bandwidths (Hz): " + string.Join(", ", BW.Select(v => v.ToString("F0"))));
+        
+        AvaPlot.Plot.Add.VerticalLine(f0);
+        foreach (var f in F)
+        {
+            AvaPlot.Plot.Add.VerticalLine(f);
+        }
         
         AvaPlot.Plot.Axes.AutoScale();
         AvaPlot.Refresh();

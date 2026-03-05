@@ -17,6 +17,7 @@
             <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
             <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
         </PackageReference>
+        <PackageReference Include="MathNet.Numerics" Version="6.0.0-beta2" />
         <PackageReference Include="NAudio" Version="2.2.1" />
         <PackageReference Include="NWaves" Version="0.9.6" />
         <PackageReference Include="ScottPlot.Avalonia" Version="5.1.57" />
