@@ -38,24 +38,23 @@ public static class FormantLpc
             double formantCeilingHz = 5500.0,
             double preemphFromHz = 50.0)
     {
-        (double[] lpcWindow, sampleRate) = CreateAndFillLpcWindow(
+        sample = CreateAndFillLpcWindow(
             sample, 
             sampleRate, 
             lpcWindowLengthSeconds, 
-            lpcWindowCenterSecond, 
-            formantCeilingHz, 
-            preemphFromHz);
-
-        // 4) Gaussian-like window
-        double[] w = GaussianWindow(lpcWindow.Length);
-        for (int i = 0; i < lpcWindow.Length; i++)
-        {
-            lpcWindow[i] *= w[i];
-        }
+            lpcWindowCenterSecond);
+        
+        int targetSampleRate = (int)Math.Round(2 * formantCeilingHz);
+        sample = ResampleLinear(sample, sampleRate, targetSampleRate);
+        sampleRate = targetSampleRate;
+        
+        PreemphasisPraat(sample, sampleRate, preemphFromHz);
+        
+        MultiplyByGaussian(sample);
 
         // 5) LPC via Burg; Praat poles = 2*maxFormants => order = 2*maxFormants
         int order = 2 * maxFormants;
-        double[] a = LpcBurg(lpcWindow, order);
+        double[] a = LpcBurg(sample, order);
 
         // 6) Roots -> formants + bandwidth
         Complex[] roots = PolynomialRoots(a);
@@ -90,19 +89,12 @@ public static class FormantLpc
         return sorted.Take(maxFormants).Select(t => t.f).ToArray();
     }
 
-    private static (double[] lpcWindow, int sampleRate) CreateAndFillLpcWindow(
+    private static double[] CreateAndFillLpcWindow(
         double[] sample, 
         int sampleRate, 
         double lpcWindowLengthSeconds,
-        double? lpcWindowCenterSecond,
-        double formantCeilingHz,
-        double preemphFromHz)
+        double? lpcWindowCenterSecond)
     {
-        int targetSampleRate = (int)Math.Round(2.0 * formantCeilingHz);
-        
-        sample = ResampleLinear(sample, sampleRate, targetSampleRate);
-        sampleRate = targetSampleRate;
-        
         int lpcWindowLength = (int)Math.Round(lpcWindowLengthSeconds * sampleRate);
         if (lpcWindowLength < 16)
         {
@@ -118,46 +110,35 @@ public static class FormantLpc
         {
             Array.Copy(sample, lpcWindowStartIndex, lpcWindow, 0, availableLpcWindowLenthg);
         }
-        
-        lpcWindow = PreemphasisPraat(lpcWindow, sampleRate, preemphFromHz);
-        return (lpcWindow, sampleRate);
+
+        return lpcWindow;
     }
-
-
-    // Praat-style pre-emphasis: y[n] = x[n] - a*x[n-1], a = exp(-2*pi*fc/sr)
-    private static double[] PreemphasisPraat(double[] sample, int sampleRate, double preemphFromHz)
+    
+    private static void PreemphasisPraat(in double[] sample, int sampleRate, double preemphFromHz)
     {
-        double a = Math.Exp(-2.0 * Math.PI * preemphFromHz / sampleRate);
+        // math magic from pratt
+        double prevEmphasisCoef = Math.Exp(-2.0 * Math.PI * preemphFromHz / sampleRate);
 
-        double[] y = new double[sample.Length];
-        y[0] = sample[0];
+        double prevSample = sample[0];
         for (int i = 1; i < sample.Length; i++)
         {
-            y[i] = sample[i] - a * sample[i - 1];
+            double currSample = sample[i];
+            sample[i] = currSample - prevEmphasisCoef * prevSample;
+            prevSample = currSample;
         }
-        return y;
     }
-
-    // Gaussian-like window similar in spirit to Praat's
-    private static double[] GaussianWindow(int n)
+    
+    private static void MultiplyByGaussian(double[] sample)
     {
-        if (n <= 0)
+        double centerIndex = (sample.Length - 1) / 2d;
+        double sigma = 0.4 * centerIndex;
+        double inv2SigmaSqr = 1 / (2 * sigma * sigma);
+
+        for (int i = 0; i < sample.Length; i++)
         {
-            return Array.Empty<double>();
+            double distanceToCenter = i - centerIndex;
+            sample[i] *= Math.Exp(-(distanceToCenter * distanceToCenter) * inv2SigmaSqr);
         }
-
-        double[] w = new double[n];
-
-        double sigma = 0.4 * (n - 1) / 2.0;
-        double mid = (n - 1) / 2.0;
-        double inv2sigma2 = 1.0 / (2.0 * sigma * sigma);
-
-        for (int i = 0; i < n; i++)
-        {
-            double d = i - mid;
-            w[i] = Math.Exp(-(d * d) * inv2sigma2);
-        }
-        return w;
     }
 
     private static void ValidateAudio(double[] y)
@@ -292,7 +273,7 @@ public static class FormantLpc
     // We assume a[0] != 0. (Here a[0]=1 from LPC.)
     private static Complex[] PolynomialRoots(double[] a)
     {
-        if (a == null || a.Length < 2)
+        if (a is not { Length: >= 2 })
         {
             return Array.Empty<Complex>();
         }
@@ -309,22 +290,22 @@ public static class FormantLpc
         // [  1        0   ...   0    ]
         // [  0        1   ...   0    ]
         // ...
-        Matrix<double>? M = Matrix<double>.Build.Dense(n, n, 0.0);
+        Matrix<double>? matrix = Matrix<double>.Build.Dense(n, n, 0.0);
 
         // first row
         for (int j = 0; j < n; j++)
         {
-            M[0, j] = -a[j + 1] / a0;
+            matrix[0, j] = -a[j + 1] / a0;
         }
 
         // subdiagonal ones
         for (int i = 1; i < n; i++)
         {
-            M[i, i - 1] = 1.0;
+            matrix[i, i - 1] = 1.0;
         }
 
         // Eigenvalues are roots
-        Evd<double>? evd = M.Evd();
+        Evd<double>? evd = matrix.Evd();
         return evd.EigenValues.Select(c => new Complex(c.Real, c.Imaginary)).ToArray();
     }
 

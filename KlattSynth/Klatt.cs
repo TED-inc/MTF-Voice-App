@@ -26,7 +26,7 @@ public static class Klatt
             throw new ArgumentNullException(nameof(frames));
         }
 
-        Generator generator = new(param);
+        Generator generator = new(param, randomSeed: 0);
 
         int outBufLen = frames.Sum(GetFeameBufferLength);
 
