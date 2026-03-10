@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace MTFVoiceTools.KlattSynth.Params;
 
-public sealed class FrameParameters
+public sealed record FrameParameters
 {
     public double Duration { get; init; }
 

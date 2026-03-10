@@ -1,7 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
@@ -10,6 +14,8 @@ using MTFVoiceTools.AudioProcessing;
 using MTFVoiceTools.KlattSynth;
 using MTFVoiceTools.KlattSynth.Params;
 using MTFVoiceTools.Librosa;
+using MTFVoiceTools.Utils;
+using NAudio.CoreAudioApi;
 using NAudio.Wave;
 using ScottPlot;
 using ScottPlot.Plottables;
@@ -22,6 +28,14 @@ public partial class MainWindow : Window
 
     private FrameAnalysis[] _framesAnalysis;
     private readonly IReadOnlyList<FrameParameters> _frames =
+    [
+        FrameParametersSamples.FemaleI with { Duration = 0.5 },
+        FrameParametersSamples.FemaleE with { Duration = 0.5 },
+        FrameParametersSamples.FemaleA with { Duration = 0.5 },
+        FrameParametersSamples.FemaleO with { Duration = 0.5 },
+        FrameParametersSamples.FemaleU  with { Duration = 0.5 },
+    ];
+    private readonly IReadOnlyList<FrameParameters> _frames2 =
     [
         FrameParametersSamples.MaleI,
         FrameParametersSamples.FemaleI,
@@ -37,18 +51,143 @@ public partial class MainWindow : Window
     private int _selectedFrameIndex = -1;
     private Marker? _selectedVowelMarker;
     private LinePlot _selectedVowelLine;
+
+    private CancellationTokenSource? _recordingCts;
+    private readonly List<double> _recordingData = new();
+    private readonly Signal _recordingPlot;
+    private int _recordingOffset;
+    
+    private MainWindowModel WindowModel => DataContext as MainWindowModel;
     
     public MainWindow()
     {
-        
         Application.Current!.RequestedThemeVariant = ThemeVariant.Light;
         InitializeComponent();
         RunKlattSynth();
+        RecordingPlot.UserInputProcessor.IsEnabled = false;
+
+        _recordingPlot =  RecordingPlot.Plot.Add.Signal(_recordingData);
+        
+        DataContext = new MainWindowModel();
+        
+        MMDeviceEnumerator enumerator = new ();
+        MMDeviceCollection devices = enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active);
+        foreach (MMDevice device in devices)
+        {
+            WindowModel.Items.Add(device);
+        }
+
+        WindowModel.SelectedItem = WindowModel.Items.First();
     }
     
-    public void ClickHandler(object sender, RoutedEventArgs args)
+    private void NextFrameClickHandler(object sender, RoutedEventArgs args)
     {
         SelectNextFrame();
+    }
+
+    private void RecordClickHandler(object sender, RoutedEventArgs args)
+    {
+        WindowModel.SelectedItem = WindowModel.SelectedItem;
+        _ = Record();
+    }
+
+    private async Task Record()
+    {
+        LiveRecorder? recorder = null;
+        
+        try
+        {
+            if (_recordingCts != null)
+            {
+                RecordButton.Content = "Stopping...";
+                await _recordingCts.CancelAsync();
+                _recordingCts.Dispose();
+                _recordingCts = null;
+                RecordButton.Content = "Record";
+                return;
+            }
+
+            RecordButton.Content = "Stop";
+            _recordingCts = new CancellationTokenSource();
+            CancellationToken token = _recordingCts.Token;
+
+            WindowModel.PropertyChanged += OnDeviceChange;
+
+            recorder = new(WindowModel.SelectedItem, 44100);
+            double windowDuration = 5;
+            int windowFramesCount = (int)(windowDuration * recorder.WaveFormat.SampleRate);
+            _recordingPlot.Data.Period = 1d / recorder.WaveFormat.SampleRate;
+
+            float[] samples = new float [1024];
+
+            string path = Path.Combine(DOWNLOADS_PATH, "MTFvoiceTools_test_record.wav");
+
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+
+            await using WaveFileWriter writer = new(path, recorder.WaveFormat);
+
+            recorder.StartRecording();
+
+            while (token.IsCancellationRequested == false)
+            {
+                IEnumerable<int> reads = await recorder.ReadAsync(samples, 0, samples.Length)
+                    .WaitAsync(token)
+                    .SupressCancelationThrow();
+
+                if (token.IsCancellationRequested)
+                {
+                    break;
+                }
+                
+                foreach (int read in reads)
+                {
+                    Console.WriteLine(read);
+                    writer.WriteSamples(samples, 0, read);
+                    _recordingData.AddRange(samples.Take(read).Select(s => (double)s));
+                }
+
+                int cleanupHead = Math.Max(0, _recordingData.Count - windowFramesCount);
+                _recordingOffset += cleanupHead;
+                _recordingData.RemoveRange(0, cleanupHead);
+
+                double offsetX = _recordingPlot.Data.Period * _recordingOffset;
+                _recordingPlot.Data.XOffset = offsetX;
+                RecordingPlot.Plot.Axes.SetLimits(left: offsetX, right: offsetX + windowDuration, bottom: -1, top: 1);
+                RecordingPlot.Refresh();
+            }
+
+            recorder.StopRecording();
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+        }
+        finally
+        {
+            recorder?.Dispose();
+            WindowModel.PropertyChanged -= OnDeviceChange;
+        }
+        
+        void OnDeviceChange(object? obj, PropertyChangedEventArgs property)
+        {
+            try
+            {
+                if (property.PropertyName != nameof(WindowModel.SelectedItem))
+                {
+                    return;
+                }
+
+                recorder?.SetDevice(WindowModel.SelectedItem);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                throw;
+            }
+        }
     }
 
     private void RunKlattSynth()
@@ -57,19 +196,19 @@ public partial class MainWindow : Window
         
         double[] samples = Klatt.GenerateSound(mainParams, _frames);
 
-        using (WaveFileWriter writer = new(Path.Combine(DOWNLOADS_PATH, "MTFvoiceTools_record.wav"),
+        using (WaveFileWriter writer = new(
+                   Path.Combine(DOWNLOADS_PATH, "MTFvoiceTools_record.wav"),
                    WaveFormat.CreateIeeeFloatWaveFormat(mainParams.SampleRate, 1)))
         {
             writer.WriteSamples(samples.Select(s => (float)s).ToArray(), 0, samples.Length);
         }
         
-        //Console.WriteLine(samples.Length);
-        
-        //using WaveFileReader reader = new(Path.Combine(DOWNLOADS_PATH, "My_record.wav"));
-        //ISampleProvider sampleProvider = reader.ToSampleProvider();
-        //float[] buffer = new float[reader.SampleCount];
-        //sampleProvider.Read(buffer, 0, buffer.Length);
-        //double[] samples = buffer.Select(x => (double)x).ToArray();
+        using WaveFileReader reader = new(Path.Combine(DOWNLOADS_PATH, "eva_5x0.5.wav"));
+        ISampleProvider sampleProvider = reader.ToSampleProvider();
+        Console.WriteLine(sampleProvider.WaveFormat.SampleRate);
+        float[] buffer = new float[reader.SampleCount];
+        sampleProvider.Read(buffer, 0, buffer.Length);
+        samples = buffer.Select(x => (double)x).ToArray();
         
         //AvaPlot.Plot.Add.Signal(samples, period: 1 / mainParams.SampleRate);
         

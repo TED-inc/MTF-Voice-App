@@ -1,5 +1,5 @@
 ﻿using System;
-using System.IO;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using MTFVoiceTools.Providers;
 using NAudio.CoreAudioApi;
@@ -7,90 +7,112 @@ using NAudio.Wave;
 
 namespace MTFVoiceTools.Utils;
 
-internal class LiveRecorder
+internal class LiveRecorder : IDisposable
 {
-    public static async Task MakeRecord(string path, int sampleRate = 16000, double durationSec = 2d)
-    {
-        Console.WriteLine($"Recording {durationSec}s mono @ {sampleRate} Hz ...");
-        await RecordMonoWasapiToFloatWav(path, sampleRate, durationSec);
-        Console.WriteLine($"Done");
-    }
+    private WasapiCapture _audioCapturer;
+    private readonly BufferedWaveProvider _bufferProvider;
+    private readonly ISampleProvider _samplesProvider;
+    private TaskCompletionSource<WaveInEventArgs> _recordingTcs;
+    
+    private bool _isRecording;
+    
+    public WaveFormat WaveFormat => _audioCapturer.WaveFormat;
 
-    private static async Task RecordMonoWasapiToFloatWav(string path, int sampleRate, double durationSec)
+    public LiveRecorder(MMDevice captureDevice, int sampleRate)
     {
-        if (File.Exists(path))
+        _audioCapturer = new(captureDevice)
         {
-            File.Delete(path);
-        }
-
-        using WasapiCapture capture = new();
-        capture.ShareMode = AudioClientShareMode.Shared;
-
-        WaveFormat desired = WaveFormat.CreateIeeeFloatWaveFormat(sampleRate, 1);
-        capture.WaveFormat = desired;
-
-        BufferedWaveProvider provider = new(capture.WaveFormat) 
+            ShareMode = AudioClientShareMode.Shared,
+            WaveFormat = WaveFormat.CreateIeeeFloatWaveFormat(sampleRate, 1),
+        };
+        _bufferProvider = new(_audioCapturer.WaveFormat) 
         { 
             DiscardOnBufferOverflow = true,
             ReadFully = false,
         };
+        _samplesProvider = _bufferProvider.ToSampleProvider();
+        _samplesProvider = new BiQuadFilterSampleProvider(
+            _samplesProvider,
+            BiQuadFilterSampleProvider.CreateDefaultHighPassFilter(_samplesProvider.WaveFormat.SampleRate));
+        _samplesProvider = new SimpleNoiseGateSampleProvider(_samplesProvider);
+        _samplesProvider = new NormalizeToPeakSampleProvider(_samplesProvider);
+    }
 
-        ISampleProvider samples = provider.ToSampleProvider();
-        samples = new BiQuadFilterSampleProvider(
-            samples,
-            BiQuadFilterSampleProvider.CreateDefaultHighPassFilter(samples.WaveFormat.SampleRate));
-        samples = new SimpleNoiseGateSampleProvider(samples);
-        samples = new NormalizeToPeakSampleProvider(samples);
+    public void StartRecording()
+    {
+        _isRecording = true;
+        _audioCapturer.StartRecording();
+    }
 
-        IWaveProvider processedWaveProvider = samples.ToWaveProvider16();
-        using WaveFileWriter writer = new(path, processedWaveProvider.WaveFormat);
+    public void StopRecording()
+    {
+        _isRecording = false;
+        _audioCapturer.StopRecording();
+    }
 
-        byte[] procedToWriterBuffer = new byte[processedWaveProvider.WaveFormat.AverageBytesPerSecond / 10];
-        TaskCompletionSource tcs = new();
-
-        capture.DataAvailable += (s, e) =>
+    public void SetDevice(MMDevice captureDevice)
+    {
+        _ = SetDeviceAsync();
+        
+        async Task SetDeviceAsync()
         {
-            provider.AddSamples(e.Buffer, 0, e.BytesRecorded);
-            int read;
-            while (true)
+            try
             {
-                read = processedWaveProvider.Read(procedToWriterBuffer, 0, procedToWriterBuffer.Length);
-                if (read == 0)
+                if (_isRecording)
                 {
-                    break;
+                    await _recordingTcs.Task;
+                    _audioCapturer.StopRecording();
                 }
-                writer.Write(procedToWriterBuffer, 0, read);
-            }
-        };
+                _audioCapturer.Dispose();
+                _audioCapturer = new WasapiCapture(captureDevice);
 
-        capture.RecordingStopped += (s, e) =>
-        {
-            if (e.Exception != null)
+                if (_isRecording)
+                {
+                    _audioCapturer.StartRecording();
+                }
+            }
+            catch (Exception e)
             {
-                Console.Error.WriteLine("Recording error: " + e.Exception);
+                Console.WriteLine(e);
+                throw e;
             }
-
-            tcs.SetResult();
-        };
-
-        capture.StartRecording();
-
-        while (durationSec > 0f)
-        {
-            Console.WriteLine(durationSec);
-            await Task.Delay(1000);
-            durationSec -= 1f;
         }
+    }
 
-        Console.WriteLine(durationSec);
-        await Task.Delay(TimeSpan.FromSeconds(durationSec));
+    public async Task<IEnumerable<int>> ReadAsync(float[] buffer, int offset, int count)
+    {
+        _recordingTcs = new();
+        _audioCapturer.DataAvailable += HandleData;
+        
+        WaveInEventArgs capturedData = await _recordingTcs.Task;
+        
+        return ReadCaptureadData(capturedData, buffer, offset, count);
 
+        void HandleData(object? obj, WaveInEventArgs args)
+        {
+            _audioCapturer.DataAvailable -= HandleData;
+            _recordingTcs.SetResult(args);
+        }
+    }
 
+    private IEnumerable<int> ReadCaptureadData(WaveInEventArgs capturedData, float[] buffer, int offset, int count)
+    {
+        _bufferProvider.AddSamples(capturedData.Buffer, 0, capturedData.BytesRecorded);
+        while (true)
+        {
+            int read = _samplesProvider.Read(buffer, offset, count);
+            
+            if (read == 0)
+            {
+                yield break;
+            }
+            
+            yield return read;
+        }
+    }
 
-        capture.StopRecording();
-
-        await tcs.Task;
-
-        writer.Flush();
+    public void Dispose()
+    {
+        _audioCapturer.Dispose();
     }
 }
