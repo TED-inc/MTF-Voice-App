@@ -53,7 +53,7 @@ public partial class MainWindow : Window
     private LinePlot _selectedVowelLine;
 
     private CancellationTokenSource? _recordingCts;
-    private readonly List<double> _recordingData = new();
+    private readonly List<double> _recordingData = new(); // todo try queue
     private readonly Signal _recordingPlot;
     private int _recordingOffset;
     
@@ -116,9 +116,12 @@ public partial class MainWindow : Window
             recorder = new(WindowModel.SelectedItem, 44100);
             double windowDuration = 5;
             int windowFramesCount = (int)(windowDuration * recorder.WaveFormat.SampleRate);
-            _recordingPlot.Data.Period = 1d / recorder.WaveFormat.SampleRate;
+            double sampleDuration = 1d / recorder.WaveFormat.SampleRate;
+            _recordingPlot.Data.Period = sampleDuration;
+            int fftSize = FFTUtils.ClosestLowerPowerOfTwo(recorder.WaveFormat.SampleRate);
+            double fftPeriod = (double)recorder.WaveFormat.SampleRate / fftSize;
 
-            float[] samples = new float [1024];
+            float[] samplesBuffer = new float [1024];
 
             string path = Path.Combine(DOWNLOADS_PATH, "MTFvoiceTools_test_record.wav");
 
@@ -133,7 +136,7 @@ public partial class MainWindow : Window
 
             while (token.IsCancellationRequested == false)
             {
-                IEnumerable<int> reads = await recorder.ReadAsync(samples, 0, samples.Length)
+                IEnumerable<int> reads = await recorder.ReadAsync(samplesBuffer, 0, samplesBuffer.Length)
                     .WaitAsync(token)
                     .SupressCancelationThrow();
 
@@ -142,21 +145,54 @@ public partial class MainWindow : Window
                     break;
                 }
                 
+                int totalRead = 0;
+                
                 foreach (int read in reads)
                 {
-                    Console.WriteLine(read);
-                    writer.WriteSamples(samples, 0, read);
-                    _recordingData.AddRange(samples.Take(read).Select(s => (double)s));
+                    totalRead += read;
+                    writer.WriteSamples(samplesBuffer, 0, read);
+                    _recordingData.AddRange(samplesBuffer.Take(read).Select(s => (double)s));
                 }
 
                 int cleanupHead = Math.Max(0, _recordingData.Count - windowFramesCount);
                 _recordingOffset += cleanupHead;
                 _recordingData.RemoveRange(0, cleanupHead);
 
-                double offsetX = _recordingPlot.Data.Period * _recordingOffset;
+                double offsetX = sampleDuration * _recordingOffset;
                 _recordingPlot.Data.XOffset = offsetX;
                 RecordingPlot.Plot.Axes.SetLimits(left: offsetX, right: offsetX + windowDuration, bottom: -1, top: 1);
                 RecordingPlot.Refresh();
+
+                double[] samples = _recordingData.TakeLast(totalRead).ToArray();
+                
+                double[] magnitudeLinear = FFTUtils.FFTMagnitudeLinearSpectrumFromSample(samples, fftSize);
+        
+                double[] magnitudeDb = magnitudeLinear.ToArray();
+                FFTUtils.FromLinearToDb(magnitudeDb);
+        
+                double f0 = PitchCalculator.EstimateF0(magnitudeLinear, fftPeriod, recorder.WaveFormat.SampleRate);
+        
+                double[] formants = FormantLpc.CalcualteFormantsWithLpc(
+                    samples,
+                    recorder.WaveFormat.SampleRate
+                );
+                
+                SignalPlot.Plot.Clear();
+                SignalPlot.Plot.Add.Signal(magnitudeDb, fftPeriod);
+                SignalPlot.Plot.Add.VerticalLine(f0);
+                foreach (double formant in formants)
+                {
+                    SignalPlot.Plot.Add.VerticalLine(formant);
+                }
+        
+                SignalPlot.Plot.Axes.SetLimits(left: 0, right: 6000, bottom: -100, top: 0);
+                SignalPlot.Refresh();
+                
+                if (formants.Length >= 2)
+                {
+                    _selectedVowelMarker.Position = new Coordinates(formants[0], formants[1]);
+                    VowelPlot.Refresh();
+                }
             }
 
             recorder.StopRecording();
