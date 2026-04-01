@@ -53,7 +53,8 @@ public partial class MainWindow : Window
     private LinePlot _selectedVowelLine;
 
     private CancellationTokenSource? _recordingCts;
-    private readonly List<double> _recordingData = new(); // todo try queue
+    private readonly QueueReadOnlyList<double> _recordingData = new(); // todo try queue
+    private readonly List<Coordinates> _recordingFormantsData = new();
     private readonly Signal _recordingPlot;
     private int _recordingOffset;
     
@@ -64,9 +65,11 @@ public partial class MainWindow : Window
         Application.Current!.RequestedThemeVariant = ThemeVariant.Light;
         InitializeComponent();
         RunKlattSynth();
+        
         RecordingPlot.UserInputProcessor.IsEnabled = false;
-
-        _recordingPlot =  RecordingPlot.Plot.Add.Signal(_recordingData);
+        _recordingPlot = RecordingPlot.Plot.Add.Signal(_recordingData);
+        RecordingSpectrogramPlot.UserInputProcessor.IsEnabled = false;
+        RecordingSpectrogramPlot.Plot.Add.ScatterPoints(_recordingFormantsData);
         
         DataContext = new MainWindowModel();
         
@@ -80,9 +83,9 @@ public partial class MainWindow : Window
         WindowModel.SelectedItem = WindowModel.Items.First();
     }
     
-    private void NextFrameClickHandler(object sender, RoutedEventArgs args)
+    private void ImportAudio(object sender, RoutedEventArgs args)
     {
-        SelectNextFrame();
+        //SelectNextFrame();
     }
 
     private void RecordClickHandler(object sender, RoutedEventArgs args)
@@ -120,6 +123,7 @@ public partial class MainWindow : Window
             _recordingPlot.Data.Period = sampleDuration;
             int fftSize = FFTUtils.ClosestLowerPowerOfTwo(recorder.WaveFormat.SampleRate);
             double fftPeriod = (double)recorder.WaveFormat.SampleRate / fftSize;
+            int totalSamplesCount = 0;
 
             float[] samplesBuffer = new float [1024];
 
@@ -145,25 +149,36 @@ public partial class MainWindow : Window
                     break;
                 }
                 
-                int totalRead = 0;
+                int totalInFrameRead = 0;
                 
                 foreach (int read in reads)
                 {
-                    totalRead += read;
+                    totalInFrameRead += read;
                     writer.WriteSamples(samplesBuffer, 0, read);
-                    _recordingData.AddRange(samplesBuffer.Take(read).Select(s => (double)s));
+                    foreach (float sample in samplesBuffer.Take(read))
+                    {
+                        _recordingData.Enqueue(sample);
+                    }
                 }
+
+                totalSamplesCount += totalInFrameRead;
 
                 int cleanupHead = Math.Max(0, _recordingData.Count - windowFramesCount);
                 _recordingOffset += cleanupHead;
-                _recordingData.RemoveRange(0, cleanupHead);
+                for (int i = 0; i < cleanupHead; i++)
+                {
+                    _recordingData.Dequeue();
+                }
+                
 
-                double offsetX = sampleDuration * _recordingOffset;
-                _recordingPlot.Data.XOffset = offsetX;
-                RecordingPlot.Plot.Axes.SetLimits(left: offsetX, right: offsetX + windowDuration, bottom: -1, top: 1);
+                double windowRecordingTimeStart = sampleDuration * _recordingOffset;
+                double windowRecordingTimeEnd = windowRecordingTimeStart + windowDuration;
+                _recordingPlot.Data.XOffset = windowRecordingTimeStart;
+                RecordingPlot.Plot.Axes.SetLimits(left: windowRecordingTimeStart, right: windowRecordingTimeEnd, bottom: -1, top: 1);
                 RecordingPlot.Refresh();
+                
 
-                double[] samples = _recordingData.TakeLast(totalRead).ToArray();
+                double[] samples = _recordingData.TakeLast(totalInFrameRead).ToArray();
                 
                 double[] magnitudeLinear = FFTUtils.FFTMagnitudeLinearSpectrumFromSample(samples, fftSize);
         
@@ -183,10 +198,14 @@ public partial class MainWindow : Window
                 foreach (double formant in formants)
                 {
                     SignalPlot.Plot.Add.VerticalLine(formant);
+                    _recordingFormantsData.Add(new(totalSamplesCount * sampleDuration, formant));
                 }
         
                 SignalPlot.Plot.Axes.SetLimits(left: 0, right: 6000, bottom: -100, top: 0);
                 SignalPlot.Refresh();
+                
+                RecordingSpectrogramPlot.Plot.Axes.SetLimits(left: windowRecordingTimeStart, right: windowRecordingTimeEnd, bottom: 0, top: 5000);
+                RecordingSpectrogramPlot.Refresh();
                 
                 if (formants.Length >= 2)
                 {

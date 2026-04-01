@@ -31,11 +31,11 @@ public static class FormantLpc
         CalcualteFormantsWithLpc(
             double[] sample,
             int sampleRate,
-            int maxFormants = 4,
+            int maxFormants = 7,
             double lpcWindowLengthSeconds = 0.025,
             double? lpcWindowCenterSecond = null,
             double formantCeilingHz = 5500.0,
-            double preemphFromHz = 50.0)
+            double preemphFromHz = 30.0)
     {
         sample = CreateAndFillLpcWindow(
             sample, 
