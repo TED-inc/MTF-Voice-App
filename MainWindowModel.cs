@@ -7,16 +7,31 @@ namespace MTFVoiceTools;
 
 public class MainWindowModel : INotifyPropertyChanged
 {
-    public ObservableCollection<MMDevice> Items { get; } = new();
-    private MMDevice? _selectedItem;
-    public MMDevice? SelectedItem
+    public ObservableCollection<MMDevice> Devices { get; } = new();
+    private MMDevice? _selectedDevice;
+    public MMDevice? SelectedDevice
     {
-        get => _selectedItem;
+        get => _selectedDevice;
         set
         {
-            if (_selectedItem != value)
+            if (_selectedDevice != value)
             {
-                _selectedItem = value;
+                _selectedDevice = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    public ObservableCollection<int> Formants { get; } = new ([4, 5, 6, 7] );
+    private int _selectedFormant = 7;
+    public int SelectedFormant
+    {
+        get => _selectedFormant;
+        set
+        {
+            if (_selectedFormant != value)
+            {
+                _selectedFormant = value;
                 OnPropertyChanged();
             }
         }
